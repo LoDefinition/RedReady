@@ -1,0 +1,84 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "redready"
+version = "0.1.0"
+description = "Pre-engagement OPSEC validation and reconnaissance scanner for red teamers"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "RedReady contributors" }]
+keywords = ["security", "recon", "red-team", "pentest", "scanner"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "httpx>=0.27.0",
+    "dnspython>=2.6.0",
+    "cryptography>=42.0.0",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "structlog>=24.1.0",
+    "pyyaml>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "mypy>=1.10.0",
+    "ruff>=0.4.0",
+    "types-pyyaml>=6.0.12",
+]
+
+[project.scripts]
+redready = "redready.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/LoDefinition/RedReady"
+Issues = "https://github.com/LoDefinition/RedReady/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["redready"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "C4", "RET", "SIM"]
+ignore = ["S101", "S603", "S607"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+disallow_untyped_defs = true
+plugins = []
+
+[[tool.mypy.overrides]]
+module = ["dns.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: tests that touch the live network (deselected by default)",
+]
+addopts = "-m 'not integration'"
