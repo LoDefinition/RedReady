@@ -141,3 +141,9 @@ class IntelSourceState(Base):
     last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     record_count: Mapped[int] = mapped_column(Integer, default=0)
     detail: Mapped[str | None] = mapped_column(Text)
+
+
+class KevCatalog(Base):
+    __tablename__ = "kev_catalog"
+    cve_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
