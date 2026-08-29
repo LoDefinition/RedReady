@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -51,7 +51,9 @@ class NvdSource:
         self._db = db
         self._api_key = api_key
 
-    async def update(self, *, days: int = DELTA_DAYS, client: httpx.AsyncClient | None = None) -> int:
+    async def update(
+        self, *, days: int = DELTA_DAYS, client: httpx.AsyncClient | None = None
+    ) -> int:
         """Refresh the cache; first use performs a complete historical bootstrap."""
         if self.status() is None:
             return await self.bootstrap(client=client)
@@ -82,7 +84,8 @@ class NvdSource:
         active_client = client or httpx.AsyncClient(timeout=60.0)
         params: dict[str, Any] = {
             start_name: _nvd_timestamp(start),
-            ("pubEndDate" if start_name == "pubStartDate" else "lastModEndDate"): _nvd_timestamp(end),
+            ("pubEndDate" if start_name == "pubStartDate" else "lastModEndDate"):
+                _nvd_timestamp(end),
             "resultsPerPage": RESULTS_PER_PAGE, "startIndex": 0,
         }
         headers = {"apiKey": self._api_key} if self._api_key else {}
@@ -102,7 +105,8 @@ class NvdSource:
         finally:
             if owns_client:
                 await active_client.aclose()
-        self._record_state(total_cached, f"{detail_prefix}: {start.date().isoformat()} to {end.date().isoformat()}")
+        detail = f"{detail_prefix}: {start.date().isoformat()} to {end.date().isoformat()}"
+        self._record_state(total_cached, detail)
         return total_cached
 
     def _store(self, vulnerabilities: list[dict[str, Any]]) -> int:
@@ -263,7 +267,9 @@ def _nvd_timestamp(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.000")
 
 
-def date_windows(start: datetime, end: datetime, days: int = BOOTSTRAP_WINDOW_DAYS) -> AsyncIterator[tuple[datetime, datetime]]:
+def date_windows(
+    start: datetime, end: datetime, days: int = BOOTSTRAP_WINDOW_DAYS
+) -> AsyncIterator[tuple[datetime, datetime]]:
     """Yield contiguous NVD API windows; each remains below its 120-day limit."""
     async def generate() -> AsyncIterator[tuple[datetime, datetime]]:
         cursor = start
