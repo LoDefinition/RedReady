@@ -10,10 +10,10 @@ from redready.config import Settings
 from redready.db.session import Database
 from redready.engine.result import Finding, Severity
 from redready.intel.scorer import score_finding
-from redready.intel.sources.nvd import CveMatch, NvdSource
 from redready.intel.sources.cpe_dict import canonicalize
 from redready.intel.sources.distro import detect_distro_context
 from redready.intel.sources.kev import KevSource
+from redready.intel.sources.nvd import CveMatch, NvdSource
 
 log = structlog.get_logger(__name__)
 
@@ -38,17 +38,27 @@ class IntelEngine:
             if canonical is None:
                 continue
             matches = self.nvd.lookup(canonical.vendor, canonical.product, service["version"])
-            candidates = _cve_findings(service, matches, canonical.source, canonical.confidence, self.kev)
+            candidates = _cve_findings(
+                service, matches, canonical.source, canonical.confidence, self.kev
+            )
             for finding in candidates:
                 score_finding(finding)
-            new_findings.extend(sorted(candidates, key=lambda finding: -finding.risk_score)[:MAX_CVES_PER_SERVICE])
+            new_findings.extend(
+                sorted(candidates, key=lambda finding: -finding.risk_score)[:MAX_CVES_PER_SERVICE]
+            )
 
         for finding in [*findings, *new_findings]:
             score_finding(finding)
         return new_findings
 
 
-def _cve_findings(service: dict[str, str], matches: list[CveMatch], source: str, match_confidence: float, kev_source: KevSource) -> list[Finding]:
+def _cve_findings(
+    service: dict[str, str],
+    matches: list[CveMatch],
+    source: str,
+    match_confidence: float,
+    kev_source: KevSource,
+) -> list[Finding]:
     port = int(service["port"]) if service.get("port") else None
     product = f"{service['product']} {service['version']}"
     distro = detect_distro_context(service.get("raw_banner", service.get("version", "")), product)
