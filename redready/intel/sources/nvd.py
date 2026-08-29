@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -21,6 +22,9 @@ NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 RESULTS_PER_PAGE = 2000
 #: The NVD API rejects lastModStartDate windows wider than 120 days.
 MAX_WINDOW_DAYS = 120
+BOOTSTRAP_WINDOW_DAYS = 100
+BOOTSTRAP_START = datetime(1999, 1, 1, tzinfo=UTC)
+DELTA_DAYS = 7
 #: NVD asks unauthenticated clients for 6s between requests; API keys allow much faster polling.
 UNAUTHENTICATED_DELAY = 6.0
 AUTHENTICATED_DELAY = 0.6
@@ -47,45 +51,58 @@ class NvdSource:
         self._db = db
         self._api_key = api_key
 
-    async def update(self, *, days: int = 30, client: httpx.AsyncClient | None = None) -> int:
-        """Ingest every CVE modified in the last ``days`` days. Returns the number cached."""
-        if days > MAX_WINDOW_DAYS:
-            raise ValueError(f"NVD accepts at most a {MAX_WINDOW_DAYS} day window, got {days}")
+    async def update(self, *, days: int = DELTA_DAYS, client: httpx.AsyncClient | None = None) -> int:
+        """Refresh the cache; first use performs a complete historical bootstrap."""
+        if self.status() is None:
+            return await self.bootstrap(client=client)
+        return await self._ingest_window(
+            "lastModStartDate", datetime.now(UTC) - timedelta(days=days),
+            datetime.now(UTC), days, client
+        )
 
+    async def bootstrap(self, *, client: httpx.AsyncClient | None = None) -> int:
+        """Ingest every CVE published since the NVD began, in API-safe windows."""
+        now = datetime.now(UTC)
+        total = 0
+        async for window_start, window_end in date_windows(BOOTSTRAP_START, now):
+            total += await self._ingest_window(
+                "pubStartDate", window_start, window_end, BOOTSTRAP_WINDOW_DAYS, client,
+                detail_prefix="bootstrap"
+            )
+        self._record_state(total, "historical bootstrap complete")
+        return total
+
+    async def _ingest_window(
+        self, start_name: str, start: datetime, end: datetime, days: int,
+        client: httpx.AsyncClient | None, *, detail_prefix: str = "delta"
+    ) -> int:
+        if end - start > timedelta(days=MAX_WINDOW_DAYS):
+            raise ValueError(f"NVD accepts at most a {MAX_WINDOW_DAYS} day window")
         owns_client = client is None
-        client = client or httpx.AsyncClient(timeout=60.0)
+        active_client = client or httpx.AsyncClient(timeout=60.0)
+        params: dict[str, Any] = {
+            start_name: _nvd_timestamp(start),
+            ("pubEndDate" if start_name == "pubStartDate" else "lastModEndDate"): _nvd_timestamp(end),
+            "resultsPerPage": RESULTS_PER_PAGE, "startIndex": 0,
+        }
         headers = {"apiKey": self._api_key} if self._api_key else {}
         delay = AUTHENTICATED_DELAY if self._api_key else UNAUTHENTICATED_DELAY
-
-        end = datetime.now(UTC)
-        start = end - timedelta(days=days)
-        params: dict[str, Any] = {
-            "lastModStartDate": _nvd_timestamp(start),
-            "lastModEndDate": _nvd_timestamp(end),
-            "resultsPerPage": RESULTS_PER_PAGE,
-            "startIndex": 0,
-        }
-
         total_cached = 0
         try:
             while True:
-                response = await client.get(NVD_API_URL, params=params, headers=headers)
+                response = await active_client.get(NVD_API_URL, params=params, headers=headers)
                 response.raise_for_status()
                 payload = response.json()
                 vulnerabilities = payload.get("vulnerabilities", [])
-                if not vulnerabilities:
-                    break
                 total_cached += self._store(vulnerabilities)
-
                 params["startIndex"] += len(vulnerabilities)
-                if params["startIndex"] >= payload.get("totalResults", 0):
+                if params["startIndex"] >= payload.get("totalResults", 0) or not vulnerabilities:
                     break
                 await asyncio.sleep(delay)
         finally:
             if owns_client:
-                await client.aclose()
-
-        self._record_state(total_cached, f"last {days} days")
+                await active_client.aclose()
+        self._record_state(total_cached, f"{detail_prefix}: {start.date().isoformat()} to {end.date().isoformat()}")
         return total_cached
 
     def _store(self, vulnerabilities: list[dict[str, Any]]) -> int:
@@ -244,3 +261,14 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 def _nvd_timestamp(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.000")
+
+
+def date_windows(start: datetime, end: datetime, days: int = BOOTSTRAP_WINDOW_DAYS) -> AsyncIterator[tuple[datetime, datetime]]:
+    """Yield contiguous NVD API windows; each remains below its 120-day limit."""
+    async def generate() -> AsyncIterator[tuple[datetime, datetime]]:
+        cursor = start
+        while cursor < end:
+            window_end = min(cursor + timedelta(days=days), end)
+            yield cursor, window_end
+            cursor = window_end
+    return generate()
