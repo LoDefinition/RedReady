@@ -142,6 +142,7 @@ class BannerModule(BaseModule):
                     "product": parsed.product,
                     "version": parsed.version,
                     "cpe": parsed.cpe,
+                    "raw_banner": text,
                 }
             )
             out.findings.append(

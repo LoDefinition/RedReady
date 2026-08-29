@@ -10,6 +10,9 @@ from redready.config import Settings
 from redready.db.session import Database
 from redready.engine.result import Finding, Severity
 from redready.intel.scorer import score_finding
+from redready.intel.sources.cpe_dict import canonicalize
+from redready.intel.sources.distro import detect_distro_context
+from redready.intel.sources.kev import KevSource
 from redready.intel.sources.nvd import CveMatch, NvdSource
 
 log = structlog.get_logger(__name__)
@@ -22,6 +25,7 @@ class IntelEngine:
     def __init__(self, db: Database, settings: Settings) -> None:
         self._settings = settings
         self.nvd = NvdSource(db, api_key=settings.intel.nvd_api_key)
+        self.kev = KevSource(db)
 
     def correlate(self, findings: list[Finding], metadata: dict[str, Any]) -> list[Finding]:
         """Produce CVE findings for every identified service version, then score everything.
@@ -30,20 +34,34 @@ class IntelEngine:
         """
         new_findings: list[Finding] = []
         for service in metadata.get("service_versions", []):
-            matches = self.nvd.lookup(service["vendor"], service["product"], service["version"])
-            if not matches:
+            canonical = canonicalize(service["vendor"], service["product"], service.get("nmap_cpe"))
+            if canonical is None:
                 continue
-            ranked = sorted(matches, key=lambda m: -(m.cvss_score or 0.0))[:MAX_CVES_PER_SERVICE]
-            new_findings.extend(_cve_findings(service, ranked))
+            matches = self.nvd.lookup(canonical.vendor, canonical.product, service["version"])
+            candidates = _cve_findings(
+                service, matches, canonical.source, canonical.confidence, self.kev
+            )
+            for finding in candidates:
+                score_finding(finding)
+            new_findings.extend(
+                sorted(candidates, key=lambda finding: -finding.risk_score)[:MAX_CVES_PER_SERVICE]
+            )
 
         for finding in [*findings, *new_findings]:
             score_finding(finding)
         return new_findings
 
 
-def _cve_findings(service: dict[str, str], matches: list[CveMatch]) -> list[Finding]:
+def _cve_findings(
+    service: dict[str, str],
+    matches: list[CveMatch],
+    source: str,
+    match_confidence: float,
+    kev_source: KevSource,
+) -> list[Finding]:
     port = int(service["port"]) if service.get("port") else None
     product = f"{service['product']} {service['version']}"
+    distro = detect_distro_context(service.get("raw_banner", service.get("version", "")), product)
     return [
         Finding(
             module="vuln_intel",
@@ -51,8 +69,12 @@ def _cve_findings(service: dict[str, str], matches: list[CveMatch]) -> list[Find
             description=(
                 f"{product} on port {port} matches the affected version range of "
                 f"{match.cve_id}. {match.description}"
-            ).strip(),
+            ).strip() + (f"\n\nBackport caveat: {distro.caveat}" if distro.detected else ""),
             severity=_severity_from_nvd(match.severity),
+            confidence=distro.confidence,
+            cpe_match_source=source,
+            cpe_match_confidence=match_confidence,
+            kev=kev_source.contains(match.cve_id),
             remediation=(
                 f"Upgrade {service['product']} beyond {service['version']}, or apply the vendor "
                 f"patch referenced by {match.cve_id}. If patching is not possible, restrict "
