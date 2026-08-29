@@ -1,0 +1,34 @@
+name: Bug report
+description: Report reproducible unexpected behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include credentials, private target data, or suspected security vulnerabilities."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: "Use a sanitized, authorized example."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: RedReady version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: "OS, Python version, nmap version, and installation method."
+    validations:
+      required: true
