@@ -44,6 +44,10 @@ def risk_score(
 
 def score_finding(finding: Finding) -> Finding:
     """Set ``risk_score`` (and, when intelligence exists, ``severity``) on a finding in place."""
+    if finding.kev:
+        finding.risk_score = 1.0
+        finding.severity = "CRITICAL"
+        return finding
     computed = risk_score(finding.cvss_score, finding.prevalence_score, finding.epss_score)
     if computed is None:
         finding.risk_score = SEVERITY_BASE_SCORE[finding.severity]
