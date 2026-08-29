@@ -87,6 +87,10 @@ class Finding:
     elastic_rules: list[str] = field(default_factory=list)
     prevalence_score: float | None = None
     epss_score: float | None = None
+    confidence: Literal["certain", "likely", "possible"] | None = None
+    cpe_match_source: str | None = None
+    cpe_match_confidence: float | None = None
+    kev: bool = False
     references: list[str] = field(default_factory=list)
     evidence: str = ""
     port: int | None = None
@@ -112,6 +116,10 @@ class Finding:
             "elastic_rules": self.elastic_rules,
             "prevalence_score": self.prevalence_score,
             "epss_score": self.epss_score,
+            "confidence": self.confidence,
+            "cpe_match_source": self.cpe_match_source,
+            "cpe_match_confidence": self.cpe_match_confidence,
+            "kev": self.kev,
             "remediation": self.remediation,
             "references": self.references,
             "evidence": self.evidence,
