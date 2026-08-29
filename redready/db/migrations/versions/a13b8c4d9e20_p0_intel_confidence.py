@@ -20,8 +20,10 @@ def upgrade() -> None:
         batch.add_column(sa.Column("cpe_match_source", sa.String(length=20), nullable=True))
         batch.add_column(sa.Column("cpe_match_confidence", sa.Float(), nullable=True))
         batch.add_column(sa.Column("kev", sa.Boolean(), nullable=False, server_default=sa.false()))
+    op.create_table("kev_catalog", sa.Column("cve_id", sa.String(length=32), primary_key=True), sa.Column("cached_at", sa.DateTime(timezone=True), nullable=False))
 
 def downgrade() -> None:
+    op.drop_table("kev_catalog")
     with op.batch_alter_table("findings") as batch:
         batch.drop_column("kev")
         batch.drop_column("cpe_match_confidence")
