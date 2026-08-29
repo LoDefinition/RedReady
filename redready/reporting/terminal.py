@@ -73,7 +73,8 @@ class TerminalReporter:
         if finding.severity == "INFO" and not self.verbose:
             return
         style = SEVERITY_STYLE[finding.severity]
-        self.console.print(f"  [{style}]{finding.severity:<8}[/] {finding.title}")
+        suffix = " [backport?]" if finding.confidence == "possible" else ""
+        self.console.print(f"  [{style}]{finding.severity:<8}[/] {finding.title}{suffix}")
 
 
 def print_report(result: ScanResult, console: Console | None = None) -> None:
@@ -109,7 +110,7 @@ def print_report(result: ScanResult, console: Console | None = None) -> None:
                 f"{finding.risk_score:.2f}",
                 str(finding.port or "-"),
                 finding.module,
-                finding.title,
+                finding.title + (" [backport?]" if finding.confidence == "possible" else ""),
             )
         console.print(table)
 
