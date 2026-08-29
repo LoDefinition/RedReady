@@ -66,6 +66,10 @@ class FindingRecord(Base):
     elastic_rules: Mapped[list[str]] = mapped_column(JSON, default=list)
     prevalence_score: Mapped[float | None] = mapped_column(Float)
     epss_score: Mapped[float | None] = mapped_column(Float)
+    confidence: Mapped[str | None] = mapped_column(String(10))
+    cpe_match_source: Mapped[str | None] = mapped_column(String(20))
+    cpe_match_confidence: Mapped[float | None] = mapped_column(Float)
+    kev: Mapped[bool] = mapped_column(default=False)
     remediation: Mapped[str] = mapped_column(Text, nullable=False)
     # `references` is reserved in some SQL dialects, so the column is named `reference_urls`.
     reference_urls: Mapped[list[str]] = mapped_column(JSON, default=list)
